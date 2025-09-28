@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { APIResponse } from '../types';
 import { ValidationError, ErrorCode } from '../types/errors';
+import xss from 'xss';
 
 export interface ValidationErrorItem {
   field: string;
@@ -157,11 +158,21 @@ export const validateFdcId = (req: Request, res: Response, next: NextFunction): 
  */
 export const sanitizeInput = (req: Request, res: Response, next: NextFunction): void => {
   // Sanitize query parameters
-  if (req.query.type) {
-    req.query.type = (req.query.type as string)
-      .trim()
-      .replace(/[<>]/g, '') // Remove potential HTML tags
-      .substring(0, 100); // Limit length
+  if (req.query && typeof req.query === 'object') {
+    for (const key in req.query) {
+      if (typeof req.query[key] === 'string') {
+        req.query[key] = xss(req.query[key] as string);
+      }
+    }
+  }
+
+  // Sanitize body parameters if present
+  if (req.body && typeof req.body === 'object') {
+    for (const key in req.body) {
+      if (typeof req.body[key] === 'string') {
+        req.body[key] = xss(req.body[key]);
+      }
+    }
   }
 
   next();
