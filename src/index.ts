@@ -77,8 +77,14 @@ class App {
   }
 
   private initializeRoutes(): void {
-    // Health check endpoint with rate limiting
+    // Health check endpoint with rate limiting (multiple paths for convenience)
     this.app.get('/health', healthCheckLimiter, (req: Request, res: Response) => {
+      const foodController = new FoodController(new USDAService(process.env.USDA_API_KEY || ''));
+      foodController.healthCheck(req, res);
+    });
+
+    // Alternative health endpoint path for API consistency
+    this.app.get('/api/health', healthCheckLimiter, (req: Request, res: Response) => {
       const foodController = new FoodController(new USDAService(process.env.USDA_API_KEY || ''));
       foodController.healthCheck(req, res);
     });
@@ -102,10 +108,10 @@ class App {
         
         endpoints: {
           health: {
-            path: '/health',
+            paths: ['/health', '/api/health'],
             method: 'GET',
             description: 'Health check endpoint with system status and USDA API connectivity',
-            example: `${baseUrl}/health`
+            examples: [`${baseUrl}/health`, `${baseUrl}/api/health`]
           },
           searchFoods: {
             path: '/api/foods',
