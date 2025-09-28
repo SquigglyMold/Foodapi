@@ -88,17 +88,103 @@ class App {
 
     // Root endpoint
     this.app.get('/', (req: Request, res: Response) => {
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const requestId = (req as any).requestId;
+      
       res.json({
         success: true,
-        message: 'Food API - USDA Food Data Central Integration',
+        message: 'Welcome to the Food API! 🍎',
         version: '1.0.0',
+        description: 'A robust Express.js API that fetches food information from the USDA Food Database with built-in rate limiting, input validation, and health monitoring.',
+        baseUrl: baseUrl,
+        requestId: requestId,
+        timestamp: new Date().toISOString(),
+        
         endpoints: {
-          health: '/health',
-          searchFoods: '/api/foods?type=apple&pageSize=10',
-          getFoodNutrition: '/api/foods/:fdcId/nutrition',
-          getFoodDetails: '/api/foods/:fdcId'
+          health: {
+            path: '/health',
+            method: 'GET',
+            description: 'Health check endpoint with system status and USDA API connectivity',
+            example: `${baseUrl}/health`
+          },
+          searchFoods: {
+            path: '/api/foods',
+            method: 'GET',
+            description: 'Search for foods in the USDA database with nutrition data',
+            parameters: {
+              type: 'Food name to search for (required, 1-100 characters)',
+              pageSize: 'Number of results per page (optional, 1-200, default: 25)',
+              pageNumber: 'Page number (optional, minimum: 1, default: 1)'
+            },
+            example: `${baseUrl}/api/foods?type=apple&pageSize=10`
+          },
+          getFoodNutrition: {
+            path: '/api/foods/:fdcId/nutrition',
+            method: 'GET',
+            description: 'Get detailed nutrition information for a specific food by FDC ID',
+            parameters: {
+              fdcId: 'Food Data Central ID (required, positive integer)'
+            },
+            example: `${baseUrl}/api/foods/1102653/nutrition`
+          },
+          getFoodDetails: {
+            path: '/api/foods/:fdcId',
+            method: 'GET',
+            description: 'Get raw food details from USDA database by FDC ID',
+            parameters: {
+              fdcId: 'Food Data Central ID (required, positive integer)'
+            },
+            example: `${baseUrl}/api/foods/1102653`
+          }
         },
-        documentation: 'https://fdc.nal.usda.gov/api-guide.html'
+
+        features: [
+          '🛡️ Rate limiting to prevent abuse',
+          '✅ Comprehensive input validation',
+          '🏥 Health monitoring with USDA API status',
+          '🔒 CORS enabled and input sanitization',
+          '📊 Nutritional data extraction (calories, macros)',
+          '🎯 Clean JSON responses with error handling',
+          '📝 Request ID tracking for debugging'
+        ],
+
+        rateLimiting: {
+          general: '100 requests per 15 minutes per IP',
+          search: '10 requests per 1 minute per IP',
+          health: '60 requests per 1 minute per IP'
+        },
+
+        errorHandling: {
+          '400': 'Bad Request - Invalid input parameters',
+          '404': 'Not Found - Food or endpoint not found',
+          '429': 'Too Many Requests - Rate limit exceeded',
+          '500': 'Internal Server Error - Server configuration issues',
+          '502': 'Bad Gateway - USDA API connectivity issues',
+          '503': 'Service Unavailable - USDA API temporarily unavailable'
+        },
+
+        usdaDisclaimer: {
+          important: '⚠️ USDA API DISCLAIMER',
+          message: 'This API integrates with the USDA Food Data Central API. Please review the USDA Terms of Service and API usage guidelines.',
+          links: {
+            termsOfService: 'https://fdc.nal.usda.gov/terms-of-service.html',
+            apiGuide: 'https://fdc.nal.usda.gov/api-guide.html',
+            dataPolicy: 'https://fdc.nal.usda.gov/data-policy.html'
+          },
+          attribution: 'Data provided by the U.S. Department of Agriculture, Agricultural Research Service, Food Data Central, 2019. Available at: https://fdc.nal.usda.gov/'
+        },
+
+        documentation: {
+          apiGuide: 'https://fdc.nal.usda.gov/api-guide.html',
+          dataPolicy: 'https://fdc.nal.usda.gov/data-policy.html',
+          github: 'https://github.com/SquigglyMold/Foodapi'
+        },
+
+        support: {
+          issues: 'Report issues on GitHub',
+          email: 'Contact the development team',
+          status: 'Check /health endpoint for API status'
+        }
       });
     });
   }
