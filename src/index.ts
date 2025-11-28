@@ -2,6 +2,7 @@ import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import compression from 'compression';
 import dotenv from 'dotenv';
 import foodRoutes from './routes/foodRoutes';
 import { errorHandler, notFoundHandler, requestIdMiddleware } from './middleware/errorHandler';
@@ -28,6 +29,19 @@ class App {
   private initializeMiddlewares(): void {
     // Request ID middleware (applied first)
     this.app.use(requestIdMiddleware);
+    
+    // Compression middleware (should be early in the stack)
+    this.app.use(compression({
+      level: 6, // Balance between compression and CPU usage
+      threshold: 1024, // Only compress responses larger than 1KB
+      filter: (req, res) => {
+        // Don't compress if client doesn't support it
+        if (req.headers['x-no-compression']) {
+          return false;
+        }
+        return compression.filter(req, res);
+      }
+    }));
     
     // Rate limiting
     this.app.use(generalLimiter);
@@ -56,8 +70,29 @@ class App {
       exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']
     }));
 
-    // Logging middleware
-    this.app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+    // Logging middleware - optimized for production
+    if (process.env.NODE_ENV === 'production') {
+      // Skip logging for health checks in production to reduce overhead
+      this.app.use(morgan('combined', {
+        skip: (req) => req.path === '/health' || req.path === '/api/health'
+      }));
+    } else {
+      this.app.use(morgan('dev'));
+    }
+    
+    // Add response time header (set before response is sent)
+    this.app.use((req, res, next) => {
+      const start = Date.now();
+      const originalSend = res.send;
+      res.send = function(body) {
+        const duration = Date.now() - start;
+        if (!res.headersSent) {
+          res.setHeader('X-Response-Time', `${duration}ms`);
+        }
+        return originalSend.call(this, body);
+      };
+      next();
+    });
 
     // Body parsing middleware
     this.app.use(express.json({ limit: '10mb' }));
@@ -227,16 +262,36 @@ class App {
   }
 }
 
-// Handle uncaught exceptions
+// Handle uncaught exceptions with proper error handling
 process.on('uncaughtException', (error: Error) => {
-  console.error('❌ Uncaught Exception:', error);
-  process.exit(1);
+  console.error('❌ Uncaught Exception:', {
+    name: error.name,
+    message: error.message,
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Give time for logs to flush before exiting
+  setTimeout(() => {
+    process.exit(1);
+  }, 100);
 });
 
-// Handle unhandled promise rejections
+// Handle unhandled promise rejections with proper error handling
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  console.error('❌ Unhandled Rejection:', {
+    name: error.name,
+    message: error.message,
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    promise: promise.toString(),
+    timestamp: new Date().toISOString()
+  });
+  
+  // Give time for logs to flush before exiting
+  setTimeout(() => {
+    process.exit(1);
+  }, 100);
 });
 
 // Graceful shutdown

@@ -3,24 +3,41 @@
   "builds": [
     {
       "src": "api/index.ts",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/api/index.ts"
+      "dest": "/api/index.ts",
+      "headers": {
+        "Cache-Control": "public, max-age=300, s-maxage=300"
+      }
     },
     {
       "src": "/health",
-      "dest": "/api/index.ts"
+      "dest": "/api/index.ts",
+      "headers": {
+        "Cache-Control": "public, max-age=60, s-maxage=60"
+      }
     },
     {
       "src": "/",
-      "dest": "/api/index.ts"
+      "dest": "/api/index.ts",
+      "headers": {
+        "Cache-Control": "public, max-age=3600, s-maxage=3600"
+      }
     }
   ],
   "env": {
     "NODE_ENV": "production"
+  },
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 25
+    }
   }
 }

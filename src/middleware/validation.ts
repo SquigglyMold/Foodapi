@@ -20,14 +20,18 @@ export class ValidationErrorClass extends Error {
   }
 }
 
+// Pre-compile regex for better performance
+const VALID_FOOD_TYPE_REGEX = /^[a-zA-Z0-9\s\-.,&()]+$/;
+
 /**
  * Validate food search parameters
+ * Optimized with early returns and pre-compiled regex
  */
 export const validateFoodSearch = (req: Request, res: Response, next: NextFunction): void => {
   const errors: ValidationErrorItem[] = [];
   const { type, pageSize, pageNumber } = req.query;
 
-  // Validate required 'type' parameter
+  // Validate required 'type' parameter with early returns
   if (!type) {
     errors.push({
       field: 'type',
@@ -39,23 +43,26 @@ export const validateFoodSearch = (req: Request, res: Response, next: NextFuncti
       message: 'Food type must be a string',
       value: type
     });
-  } else if (type.trim().length === 0) {
-    errors.push({
-      field: 'type',
-      message: 'Food type cannot be empty'
-    });
-  } else if (type.length > 100) {
-    errors.push({
-      field: 'type',
-      message: 'Food type must be 100 characters or less',
-      value: type
-    });
-  } else if (!/^[a-zA-Z0-9\s\-.,&()]+$/.test(type)) {
-    errors.push({
-      field: 'type',
-      message: 'Food type contains invalid characters. Only letters, numbers, spaces, and basic punctuation are allowed',
-      value: type
-    });
+  } else {
+    const trimmedType = type.trim();
+    if (trimmedType.length === 0) {
+      errors.push({
+        field: 'type',
+        message: 'Food type cannot be empty'
+      });
+    } else if (trimmedType.length > 100) {
+      errors.push({
+        field: 'type',
+        message: 'Food type must be 100 characters or less',
+        value: type
+      });
+    } else if (!VALID_FOOD_TYPE_REGEX.test(trimmedType)) {
+      errors.push({
+        field: 'type',
+        message: 'Food type contains invalid characters. Only letters, numbers, spaces, and basic punctuation are allowed',
+        value: type
+      });
+    }
   }
 
   // Validate optional 'pageSize' parameter

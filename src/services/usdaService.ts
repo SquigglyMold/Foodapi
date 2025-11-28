@@ -1,14 +1,57 @@
-import axios, { AxiosResponse, AxiosError } from 'axios';
+import axios, { AxiosResponse, AxiosError, AxiosInstance } from 'axios';
 import { USDASearchResponse, SearchParams, NutritionSearchResult, USDAFood, ExtractedNutritionData } from '../types';
 import { NutritionExtractor } from '../utils/nutritionExtractor';
 import { USDAAPIError, NetworkError, ParsingError, FoodNotFoundError, ErrorCode } from '../types/errors';
+import { CacheService } from './cacheService';
+import http from 'http';
+import https from 'https';
 
 export class USDAService {
   private readonly baseURL = 'https://api.nal.usda.gov/fdc/v1';
   private readonly apiKey: string;
+  private readonly axiosInstance: AxiosInstance;
+  private readonly cache: CacheService;
+  
+  // HTTP agent with keep-alive for connection reuse
+  private readonly httpAgent = new http.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 1000,
+    maxSockets: 50,
+    maxFreeSockets: 10,
+    timeout: 60000
+  });
+
+  private readonly httpsAgent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 1000,
+    maxSockets: 50,
+    maxFreeSockets: 10,
+    timeout: 60000
+  });
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+    this.cache = CacheService.getInstance();
+    
+    // Create optimized axios instance with connection pooling
+    this.axiosInstance = axios.create({
+      baseURL: this.baseURL,
+      timeout: 8000, // Reduced from 10s for faster failures
+      httpAgent: this.httpAgent,
+      httpsAgent: this.httpsAgent,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'FoodAPI/1.0.0',
+        'Connection': 'keep-alive',
+        'Accept-Encoding': 'gzip, deflate, br'
+      },
+      // Enable compression
+      decompress: true,
+      // Max redirects
+      maxRedirects: 3,
+      // Validate status
+      validateStatus: (status) => status < 500
+    });
   }
 
   /**
@@ -17,9 +60,26 @@ export class USDAService {
    * @returns Promise with processed nutrition data
    */
   async searchFoodsWithNutrition(params: SearchParams, requestId?: string): Promise<NutritionSearchResult> {
+    // Check cache first
+    const cacheKey = CacheService.generateKey('search', {
+      type: params.type,
+      pageSize: params.pageSize,
+      pageNumber: params.pageNumber
+    });
+    
+    const cached = this.cache.get<NutritionSearchResult>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const rawResponse = await this.searchFoodsRaw(params, requestId);
-      return NutritionExtractor.extractNutritionData(rawResponse, params.type);
+      const result = NutritionExtractor.extractNutritionData(rawResponse, params.type);
+      
+      // Cache result for 5 minutes
+      this.cache.set(cacheKey, result, 5 * 60 * 1000);
+      
+      return result;
     } catch (error: unknown) {
       // Re-throw AppError instances, wrap others
       if (error instanceof USDAAPIError || error instanceof NetworkError || error instanceof ParsingError) {
@@ -58,15 +118,11 @@ export class USDAService {
     };
 
     try {
-      const response: AxiosResponse<USDASearchResponse> = await axios.get(
-        `${this.baseURL}/foods/search`,
+      // Use optimized axios instance with connection pooling
+      const response: AxiosResponse<USDASearchResponse> = await this.axiosInstance.get(
+        '/foods/search',
         {
-          params: searchParams,
-          timeout: 10000, // 10 second timeout
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'FoodAPI/1.0.0'
-          }
+          params: searchParams
         }
       );
 
@@ -118,17 +174,20 @@ export class USDAService {
       throw new Error('Valid FDC ID is required');
     }
 
+    // Check cache first
+    const cacheKey = CacheService.generateKey('food', { fdcId });
+    const cached = this.cache.get<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      const response = await axios.get(
-        `${this.baseURL}/food/${fdcId}`,
+      // Use optimized axios instance
+      const response = await this.axiosInstance.get(
+        `/food/${fdcId}`,
         {
           params: {
             api_key: this.apiKey
-          },
-          timeout: 10000,
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'FoodAPI/1.0.0'
           }
         }
       );
@@ -138,6 +197,9 @@ export class USDAService {
         throw new ParsingError('Invalid response format from USDA API', response.data, requestId);
       }
 
+      // Cache for 10 minutes (food details change less frequently)
+      this.cache.set(cacheKey, response.data, 10 * 60 * 1000);
+      
       return response.data;
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
@@ -171,9 +233,23 @@ export class USDAService {
    * @returns Promise with extracted nutrition data
    */
   async getFoodNutrition(fdcId: number, requestId?: string): Promise<ExtractedNutritionData | null> {
+    // Check cache first
+    const cacheKey = CacheService.generateKey('nutrition', { fdcId });
+    const cached = this.cache.get<ExtractedNutritionData>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const foodDetails = await this.getFoodDetails(fdcId, requestId);
-      return NutritionExtractor.getDetailedNutrition(foodDetails as USDAFood);
+      const nutrition = NutritionExtractor.getDetailedNutrition(foodDetails as USDAFood);
+      
+      // Cache nutrition data for 10 minutes
+      if (nutrition) {
+        this.cache.set(cacheKey, nutrition, 10 * 60 * 1000);
+      }
+      
+      return nutrition;
     } catch (error: unknown) {
       // Re-throw AppError instances, wrap others
       if (error instanceof USDAAPIError || error instanceof NetworkError || error instanceof ParsingError || error instanceof FoodNotFoundError) {

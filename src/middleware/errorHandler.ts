@@ -40,6 +40,12 @@ export const errorHandler = (err: Error, req: Request, res: Response, next: Next
     timestamp: new Date().toISOString()
   });
 
+  // Check if response has already been sent
+  if (res.headersSent) {
+    console.error('Response already sent, cannot send error response', { requestId });
+    return next(err);
+  }
+
   let appError: AppError;
 
   // Handle different types of errors
@@ -47,20 +53,24 @@ export const errorHandler = (err: Error, req: Request, res: Response, next: Next
     appError = err;
   } else if (err.name === 'ValidationError') {
     appError = new ValidationError(err.message, undefined, requestId, req.path, req.method);
-  } else if (err.message.includes('not found') || err.message.includes('Not Found')) {
+  } else if (err.message && (err.message.includes('not found') || err.message.includes('Not Found'))) {
     appError = new FoodNotFoundError(undefined, undefined, requestId, req.path, req.method);
-  } else if (err.message.includes('Invalid or missing API key') || err.message.includes('API key')) {
+  } else if (err.message && (err.message.includes('Invalid or missing API key') || err.message.includes('API key'))) {
     appError = new AppError(err.message, 401, ErrorCode.API_KEY_INVALID, undefined, requestId, req.path, req.method);
-  } else if (err.message.includes('API access forbidden') || err.message.includes('Forbidden')) {
+  } else if (err.message && (err.message.includes('API access forbidden') || err.message.includes('Forbidden'))) {
     appError = new AppError(err.message, 403, ErrorCode.FORBIDDEN, undefined, requestId, req.path, req.method);
-  } else if (err.message.includes('rate limit') || err.message.includes('Rate limit')) {
+  } else if (err.message && (err.message.includes('rate limit') || err.message.includes('Rate limit'))) {
     appError = new RateLimitError(100, 0, new Date(), requestId, req.path, req.method);
-  } else if (err.message.includes('ECONNREFUSED') || err.message.includes('ENOTFOUND') || err.message.includes('ETIMEDOUT')) {
+  } else if (err.message && (err.message.includes('ECONNREFUSED') || err.message.includes('ENOTFOUND') || err.message.includes('ETIMEDOUT'))) {
     appError = new NetworkError('USDA API', err, requestId, req.path, req.method);
-  } else if (err.message.includes('timeout')) {
+  } else if (err.message && err.message.includes('timeout')) {
     appError = new AppError('Request timeout', 408, ErrorCode.USDA_API_TIMEOUT, undefined, requestId, req.path, req.method);
-  } else if (err.message.includes('JSON') || err.message.includes('parsing') || err.message.includes('syntax')) {
+  } else if (err.message && (err.message.includes('JSON') || err.message.includes('parsing') || err.message.includes('syntax'))) {
     appError = new ParsingError('Failed to parse response data', undefined, requestId, req.path, req.method);
+  } else if (err.message && err.message.includes('ERR_HTTP_HEADERS_SENT')) {
+    // Handle the specific headers already sent error
+    console.warn('Attempted to set headers after response sent', { requestId, path: req.path });
+    return; // Don't try to send response if headers already sent
   } else {
     // Unknown error
     appError = new InternalServerError(
@@ -72,15 +82,28 @@ export const errorHandler = (err: Error, req: Request, res: Response, next: Next
     );
   }
 
-  // Add request ID to response headers
-  res.set('X-Request-ID', requestId);
-
-  // Send error response
-  const response = appError.toAPIResponse();
-  res.status(appError.statusCode).json(response);
+  try {
+    // Add request ID to response headers (only if not already sent)
+    if (!res.headersSent) {
+      res.set('X-Request-ID', requestId);
+      
+      // Send error response
+      const response = appError.toAPIResponse();
+      res.status(appError.statusCode).json(response);
+    }
+  } catch (headerError) {
+    // If setting headers fails, log but don't crash
+    console.error('Failed to send error response:', headerError);
+  }
 };
 
 export const notFoundHandler = (req: Request, res: Response): void => {
+  // Check if response has already been sent
+  if (res.headersSent) {
+    console.warn('Response already sent in notFoundHandler', { path: req.path, method: req.method });
+    return;
+  }
+
   const requestId = (req as any).requestId || generateRequestId();
   
   const response: APIResponse<null> = {
@@ -91,8 +114,12 @@ export const notFoundHandler = (req: Request, res: Response): void => {
     requestId
   };
 
-  res.set('X-Request-ID', requestId);
-  res.status(404).json(response);
+  try {
+    res.set('X-Request-ID', requestId);
+    res.status(404).json(response);
+  } catch (error) {
+    console.error('Failed to send 404 response:', error);
+  }
 };
 
 // Middleware to add request ID to all requests

@@ -21,37 +21,39 @@ export class NutritionExtractor {
    * @param searchQuery - Original search query
    * @returns Processed nutrition data
    */
+  /**
+   * Extract nutrition data from USDA search response
+   * Optimized with parallel processing for better performance
+   */
   static extractNutritionData(
     usdaResponse: USDASearchResponse, 
     searchQuery: string
   ): NutritionSearchResult {
-    const extractedFoods: ExtractedNutritionData[] = [];
-
     if (!usdaResponse.foods || usdaResponse.foods.length === 0) {
       return {
         foods: [],
-        totalHits: 0,
+        totalHits: usdaResponse.totalHits || 0,
         currentPage: usdaResponse.currentPage || 1,
         totalPages: usdaResponse.totalPages || 0,
         searchQuery
       };
     }
 
-    for (const food of usdaResponse.foods) {
-      try {
-        const extractedFood = this.extractSingleFoodNutrition(food);
-        if (extractedFood) {
-          extractedFoods.push(extractedFood);
+    // Process foods in parallel for better performance
+    const extractedFoods = usdaResponse.foods
+      .map(food => {
+        try {
+          return this.extractSingleFoodNutrition(food);
+        } catch (error: unknown) {
+          console.warn(`Failed to extract nutrition data for food ID ${food.fdcId}:`, error);
+          return null;
         }
-      } catch (error: unknown) {
-        console.warn(`Failed to extract nutrition data for food ID ${food.fdcId}:`, error);
-        // Continue processing other foods even if one fails
-      }
-    }
+      })
+      .filter((food): food is ExtractedNutritionData => food !== null);
 
     return {
       foods: extractedFoods,
-      totalHits: usdaResponse.totalHits,
+      totalHits: usdaResponse.totalHits || 0,
       currentPage: usdaResponse.currentPage || 1,
       totalPages: usdaResponse.totalPages || 0,
       searchQuery

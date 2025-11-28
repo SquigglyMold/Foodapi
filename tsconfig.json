@@ -8,6 +8,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": true,
@@ -27,7 +28,8 @@
     },
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "types": []
   },
   "include": [
     "src/**/*",
