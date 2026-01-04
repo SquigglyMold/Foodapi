@@ -10,8 +10,30 @@ import { FoodController } from '../src/controllers/foodController';
 import { USDAService } from '../src/services/usdaService';
 import { generalLimiter, healthCheckLimiter } from '../src/middleware/rateLimiter';
 
-// Load environment variables
-require('dotenv').config();
+// Load environment variables from root or src if present
+import fs from 'fs';
+import path from 'path';
+const _dotenv = require('dotenv');
+const _envPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '../src/.env'),
+  path.resolve(__dirname, '../.env'),
+  path.resolve(__dirname, '.env')
+];
+let _loadedEnvPathApi: string | null = null;
+for (const _p of _envPaths) {
+  if (fs.existsSync(_p)) {
+    _dotenv.config({ path: _p });
+    _loadedEnvPathApi = _p;
+    break;
+  }
+}
+if (_loadedEnvPathApi) {
+  console.log(`🔁 Loaded environment variables from ${_loadedEnvPathApi}`);
+} else {
+  _dotenv.config(); // fallback
+  console.log('ℹ️ No .env file found in root or src for API; using process environment variables');
+}
 
 class App {
   public app: Application;

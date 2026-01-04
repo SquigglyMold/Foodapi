@@ -4,7 +4,7 @@
   "description": "Express.js API for fetching food information from USDA Department of Agriculture",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "nodemon src/index.ts",
+    "dev": "nodemon --watch src --ext ts --exec \"ts-node\" src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "clean": "rimraf dist",
@@ -33,7 +33,7 @@
     "axios": "^1.6.2",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.6.1",
     "express": "^4.18.2",
     "express-rate-limit": "^7.5.1",
     "helmet": "^7.1.0",

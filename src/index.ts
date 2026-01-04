@@ -4,14 +4,35 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import foodRoutes from './routes/foodRoutes';
 import { errorHandler, notFoundHandler, requestIdMiddleware } from './middleware/errorHandler';
 import { FoodController } from './controllers/foodController';
 import { USDAService } from './services/usdaService';
 import { generalLimiter, healthCheckLimiter } from './middleware/rateLimiter';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables from root or src if present
+const _envPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '.env'),
+  path.resolve(__dirname, '../src/.env'),
+  path.resolve(__dirname, '../.env')
+];
+let _loadedEnvPath: string | null = null;
+for (const _p of _envPaths) {
+  if (fs.existsSync(_p)) {
+    dotenv.config({ path: _p });
+    _loadedEnvPath = _p;
+    break;
+  }
+}
+if (_loadedEnvPath) {
+  console.log(`🔁 Loaded environment variables from ${_loadedEnvPath}`);
+} else {
+  dotenv.config(); // fallback to defaults and process environment
+  console.log('ℹ️ No .env file found in root or src; using process environment variables');
+}
 
 class App {
   public app: Application;
