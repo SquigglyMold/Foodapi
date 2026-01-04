@@ -13,7 +13,7 @@ import { generalLimiter, healthCheckLimiter } from '../src/middleware/rateLimite
 // Load environment variables from root or src if present
 import fs from 'fs';
 import path from 'path';
-const _dotenv = require('dotenv');
+import dotenv from 'dotenv';
 const _envPaths = [
   path.resolve(process.cwd(), '.env'),
   path.resolve(__dirname, '../src/.env'),
@@ -23,7 +23,7 @@ const _envPaths = [
 let _loadedEnvPathApi: string | null = null;
 for (const _p of _envPaths) {
   if (fs.existsSync(_p)) {
-    _dotenv.config({ path: _p });
+    dotenv.config({ path: _p });
     _loadedEnvPathApi = _p;
     break;
   }
@@ -31,7 +31,7 @@ for (const _p of _envPaths) {
 if (_loadedEnvPathApi) {
   console.log(`🔁 Loaded environment variables from ${_loadedEnvPathApi}`);
 } else {
-  _dotenv.config(); // fallback
+  dotenv.config(); // fallback
   console.log('ℹ️ No .env file found in root or src for API; using process environment variables');
 }
 
