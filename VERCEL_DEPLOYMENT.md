@@ -14,7 +14,7 @@ Before deploying, you need to set up the following environment variables in your
 
 ### Required Variables
 
-- `USDA_API_KEY` - Your USDA Food Data Central API key
+- `USDA_API_KEY` - P81zCsMx9WI6d9Hu9WUNRgfF42zwGhTOg6ei0LAd
 
 ### Optional Variables
 
