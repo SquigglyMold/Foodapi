@@ -2,83 +2,58 @@ import rateLimit from 'express-rate-limit';
 import { Request, Response } from 'express';
 import { APIResponse } from '../types';
 
-/**
- * General API rate limiter
- */
-export const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: {
+const makeHandler = (msg: string) => (req: Request, res: Response) => {
+  const response: APIResponse<null> = {
     success: false,
-    error: 'Too many requests',
-    message: 'Too many requests from this IP, please try again later.',
-    data: null
-  } as APIResponse<null>,
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  handler: (req: Request, res: Response) => {
-    const response: APIResponse<null> = {
-      success: false,
-      error: 'Rate limit exceeded',
-      message: `Too many requests from IP ${req.ip}. Please try again in 15 minutes.`,
-      data: null
-    };
-    res.status(429).json(response);
-  }
-});
+    error: 'RATE_LIMIT_EXCEEDED',
+    message: msg,
+    data: null,
+  };
+  res.status(429).json(response);
+};
 
-/**
- * Strict rate limiter for search endpoints
- */
-export const searchLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // Limit each IP to 10 search requests per minute
-  message: {
-    success: false,
-    error: 'Search rate limit exceeded',
-    message: 'Too many search requests. Please wait before searching again.',
-    data: null
-  } as APIResponse<null>,
+/** General: 100 req / 15 min */
+export const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req: Request, res: Response) => {
-    const response: APIResponse<null> = {
-      success: false,
-      error: 'Search rate limit exceeded',
-      message: `Too many search requests from IP ${req.ip}. Please wait 1 minute before searching again.`,
-      data: null
-    };
-    res.status(429).json(response);
-  }
+  handler: makeHandler('Too many requests from this IP. Please try again in 15 minutes.'),
 });
 
-/**
- * Health check rate limiter (more lenient)
- */
-export const healthCheckLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 60, // Allow more health check requests
-  message: {
-    success: false,
-    error: 'Health check rate limit exceeded',
-    message: 'Too many health check requests.',
-    data: null
-  } as APIResponse<null>,
+/** Search / lookup: 30 req / min (raised from 10 — more lenient for developer testing) */
+export const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  handler: makeHandler('Too many search requests. Please wait before sending more.'),
 });
 
-/**
- * Get rate limit info for response headers
- */
+/** Batch / calculator: 5 req / min (heavy calls — concurrent USDA fetches) */
+export const batchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: makeHandler('Batch/calculator rate limit exceeded. These endpoints make multiple upstream calls. Please wait 1 minute.'),
+});
+
+/** Health check: 60 req / min */
+export const healthCheckLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: makeHandler('Health check rate limit exceeded.'),
+});
+
 export const getRateLimitInfo = (req: Request): any => {
-  const rateLimitInfo: any = {};
-  
+  const rl: any = {};
   if ((req as any).rateLimit) {
-    rateLimitInfo.limit = (req as any).rateLimit.limit;
-    rateLimitInfo.remaining = (req as any).rateLimit.remaining;
-    rateLimitInfo.reset = new Date((req as any).rateLimit.resetTime);
+    rl.limit     = (req as any).rateLimit.limit;
+    rl.remaining = (req as any).rateLimit.remaining;
+    rl.reset     = new Date((req as any).rateLimit.resetTime);
   }
-  
-  return rateLimitInfo;
+  return rl;
 };

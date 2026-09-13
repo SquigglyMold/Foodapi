@@ -1,39 +1,30 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import express, { Application } from 'express';
+import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
 import foodRoutes from '../src/routes/foodRoutes';
+import calculatorRoutes from '../src/routes/calculatorRoutes';
 import { errorHandler, notFoundHandler, requestIdMiddleware } from '../src/middleware/errorHandler';
 import { FoodController } from '../src/controllers/foodController';
 import { USDAService } from '../src/services/usdaService';
 import { generalLimiter, healthCheckLimiter } from '../src/middleware/rateLimiter';
 
-// Load environment variables from root or src if present
-import fs from 'fs';
-import path from 'path';
-import dotenv from 'dotenv';
+// Load .env
 const _envPaths = [
   path.resolve(process.cwd(), '.env'),
   path.resolve(__dirname, '../src/.env'),
   path.resolve(__dirname, '../.env'),
-  path.resolve(__dirname, '.env')
+  path.resolve(__dirname, '.env'),
 ];
-let _loadedEnvPathApi: string | null = null;
 for (const _p of _envPaths) {
-  if (fs.existsSync(_p)) {
-    dotenv.config({ path: _p });
-    _loadedEnvPathApi = _p;
-    break;
-  }
+  if (fs.existsSync(_p)) { dotenv.config({ path: _p }); break; }
 }
-if (_loadedEnvPathApi) {
-  console.log(`🔁 Loaded environment variables from ${_loadedEnvPathApi}`);
-} else {
-  dotenv.config(); // fallback
-  console.log('ℹ️ No .env file found in root or src for API; using process environment variables');
-}
+dotenv.config();
 
 class App {
   public app: Application;
@@ -46,116 +37,108 @@ class App {
   }
 
   private initializeMiddlewares(): void {
-    // Request ID middleware (applied first)
     this.app.use(requestIdMiddleware);
-    
-    // Compression middleware (should be early in the stack)
+
     this.app.use(compression({
-      level: 6, // Balance between compression and CPU usage
-      threshold: 1024, // Only compress responses larger than 1KB
+      level: 6,
+      threshold: 1024,
       filter: (req, res) => {
-        // Don't compress if client doesn't support it
-        if (req.headers['x-no-compression']) {
-          return false;
-        }
+        if (req.headers['x-no-compression']) return false;
         return compression.filter(req, res);
-      }
+      },
     }));
-    
-    // Rate limiting
+
     this.app.use(generalLimiter);
-    
-    // Security middleware
+
     this.app.use(helmet({
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          scriptSrc: ["'self'"],
-          imgSrc: ["'self'", "data:", "https:"],
+          styleSrc:   ["'self'", "'unsafe-inline'"],
+          scriptSrc:  ["'self'"],
+          imgSrc:     ["'self'", "data:", "https:"],
         },
       },
-      crossOriginEmbedderPolicy: false
+      crossOriginEmbedderPolicy: false,
     }));
-    
-    // CORS configuration
+
     this.app.use(cors({
-      origin: process.env.NODE_ENV === 'production' 
+      origin: process.env.NODE_ENV === 'production'
         ? process.env.ALLOWED_ORIGINS?.split(',') || false
         : true,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-      exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']
+      exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
     }));
 
-    // Logging middleware - optimized for serverless
-    // Skip logging for health checks to reduce overhead
     this.app.use(morgan('combined', {
-      skip: (req) => req.path === '/health' || req.path === '/api/health'
+      skip: (req) => req.path === '/health' || req.path === '/api/health',
     }));
-    
-    // Add response time header (set before response is sent)
-    this.app.use((req, res, next) => {
+
+    // Response time header — _req intentionally unused
+    this.app.use((_req, res, next) => {
       const start = Date.now();
-      const originalSend = res.send;
-      res.send = function(body) {
-        const duration = Date.now() - start;
-        if (!res.headersSent) {
-          res.setHeader('X-Response-Time', `${duration}ms`);
-        }
-        return originalSend.call(this, body);
+      const orig = res.send;
+      res.send = function (body) {
+        if (!res.headersSent) res.setHeader('X-Response-Time', `${Date.now() - start}ms`);
+        return orig.call(this, body);
       };
       next();
     });
 
-    // Body parsing middleware
     this.app.use(express.json({ limit: '10mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-    // Request timeout (reduced for serverless)
+    // 25s timeout (Vercel serverless max)
     this.app.use((req, res, next) => {
       req.setTimeout(25000, () => {
-        res.status(408).json({
-          success: false,
-          error: 'Request timeout',
-          message: 'Request took too long to process'
-        });
+        res.status(408).json({ success: false, error: 'Request timeout', message: 'Request took too long to process' });
       });
       next();
     });
   }
 
   private initializeRoutes(): void {
-    // Health check endpoint with rate limiting
-    this.app.get('/health', healthCheckLimiter, (req, res) => {
-      const foodController = new FoodController(new USDAService(process.env.USDA_API_KEY || ''));
-      foodController.healthCheck(req, res);
+    const makeController = () => new FoodController(new USDAService(process.env.USDA_API_KEY || ''));
+
+    this.app.get('/health', healthCheckLimiter, (req: Request, res: Response) => {
+      makeController().healthCheck(req, res);
+    });
+    this.app.get('/api/health', healthCheckLimiter, (req: Request, res: Response) => {
+      makeController().healthCheck(req, res);
     });
 
-    // API routes
     this.app.use('/api/foods', foodRoutes);
+    this.app.use('/api/calculator', calculatorRoutes);
 
-    // Root endpoint
-    this.app.get('/', (req, res) => {
-      const response = {
+    this.app.get('/', (req: Request, res: Response) => {
+      const base = `${req.protocol}://${req.get('host')}`;
+      res.json({
         success: true,
-        message: 'Food API - USDA Food Database Integration',
-        version: '1.0.0',
-        environment: process.env.NODE_ENV || 'development',
+        message: 'Food API v2.0',
+        version: '2.0.0',
+        description: 'Full-featured food & nutrition API — search, barcode lookup, meal calculator, allergen detection, health scores, diet filtering, and more.',
         endpoints: {
-          health: '/health',
-          search: '/api/foods?type=apple&pageSize=5',
-          foodDetails: '/api/foods/:fdcId',
-          nutrition: '/api/foods/:fdcId/nutrition'
+          search:          `${base}/api/foods?type=chicken&pageSize=10`,
+          searchEnhanced:  `${base}/api/foods/search?type=beef&sortBy=protein&sortOrder=desc`,
+          suggest:         `${base}/api/foods/suggest?q=chick&limit=8`,
+          barcode:         `${base}/api/foods/barcode/0123456789012`,
+          dietSearch:      `${base}/api/foods/diet/keto?q=beef`,
+          compare:         `${base}/api/foods/compare?ids=1102653,2003572`,
+          topByNutrient:   `${base}/api/foods/top?nutrient=protein&q=chicken`,
+          batch:           `POST ${base}/api/foods/batch  { "fdcIds": [123,456] }`,
+          mealCalculator:  `POST ${base}/api/calculator/meal  { "items": [{"fdcId":123,"grams":150}] }`,
+          foodDetails:     `${base}/api/foods/1102653`,
+          basicNutrition:  `${base}/api/foods/1102653/nutrition`,
+          fullNutrition:   `${base}/api/foods/1102653/full-nutrition`,
+          allergens:       `${base}/api/foods/1102653/allergens`,
+          healthScore:     `${base}/api/foods/1102653/score`,
+          health:          `${base}/health`,
         },
-        documentation: {
-          search: 'GET /api/foods?type={food_type}&pageSize={number}&pageNumber={number}',
-          foodDetails: 'GET /api/foods/{fdc_id}',
-          nutrition: 'GET /api/foods/{fdc_id}/nutrition'
-        }
-      };
-      res.json(response);
+        requestId: (req as any).requestId,
+        timestamp: new Date().toISOString(),
+      });
     });
   }
 
@@ -165,30 +148,19 @@ class App {
   }
 }
 
-// Create the Express app instance
 const app = new App().app;
 
-// Export the Express app as a Vercel serverless function
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Enable CORS for all routes
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
-  // Handle the request using Express
   return new Promise((resolve, reject) => {
     app(req as any, res as any, (err: any) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(undefined);
-      }
+      if (err) reject(err);
+      else resolve(undefined);
     });
   });
 }
