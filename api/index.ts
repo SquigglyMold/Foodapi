@@ -125,7 +125,7 @@ class App {
           suggest:         `${base}/api/foods/suggest?q=chick&limit=8`,
           barcode:         `${base}/api/foods/barcode/0123456789012`,
           dietSearch:      `${base}/api/foods/diet/keto?q=beef`,
-          compare:         `${base}/api/foods/compare?ids=1102653,2003572`,
+          compare:         `${base}/api/foods/compare?ids=1102653,2705956`,
           topByNutrient:   `${base}/api/foods/top?nutrient=protein&q=chicken`,
           batch:           `POST ${base}/api/foods/batch  { "fdcIds": [123,456] }`,
           mealCalculator:  `POST ${base}/api/calculator/meal  { "items": [{"fdcId":123,"grams":150}] }`,

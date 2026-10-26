@@ -26,7 +26,7 @@ const getServices = () => {
  * {
  *   "items": [
  *     { "fdcId": 1102653, "grams": 150, "label": "Chicken breast" },
- *     { "fdcId": 2003572, "grams": 100 }
+ *     { "fdcId": 2705956, "grams": 100 }
  *   ]
  * }
  *

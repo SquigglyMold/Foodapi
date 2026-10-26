@@ -204,7 +204,7 @@ class App {
             method: 'GET', path: '/api/foods/compare',
             description: 'Side-by-side comparison of 2–5 foods with insights (highest protein, lowest fat, etc.)',
             params: { ids: 'comma-separated FDC IDs (2–5)' },
-            example: `${base}/api/foods/compare?ids=1102653,2003572,167758`,
+            example: `${base}/api/foods/compare?ids=1102653,2705956,167758`,
           },
           topByNutrient: {
             method: 'GET', path: '/api/foods/top',
@@ -228,7 +228,7 @@ class App {
           mealCalculator: {
             method: 'POST', path: '/api/calculator/meal',
             description: 'Calculate total calories, macros, and FDA daily value percentages for a full meal. Each item specifies a food FDC ID and portion in grams.',
-            body: '{ "items": [{ "fdcId": 1102653, "grams": 150, "label": "Chicken" }, { "fdcId": 2003572, "grams": 100 }] }',
+            body: '{ "items": [{ "fdcId": 1102653, "grams": 150, "label": "Banana" }, { "fdcId": 2705956, "grams": 100 }] }',
             example: `${base}/api/calculator/meal`,
           },
 
