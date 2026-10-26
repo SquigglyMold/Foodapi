@@ -39,6 +39,13 @@ class App {
   private initializeMiddlewares(): void {
     this.app.use(requestIdMiddleware);
 
+    // RapidAPI stamps every proxied call with this header; without the check the Vercel URL is a free bypass.
+    this.app.use((req, res, next) => {
+      const secret = process.env.RAPIDAPI_PROXY_SECRET;
+      if (!secret || req.path === '/health' || req.path === '/api/health' || req.get('X-RapidAPI-Proxy-Secret') === secret) return next();
+      res.status(403).json({ success: false, error: 'Forbidden', message: 'Subscribe at https://rapidapi.com/squigglymold/api/food-calories-and-macros-api' });
+    });
+
     this.app.use(compression({
       level: 6,
       threshold: 1024,
