@@ -32,6 +32,21 @@ const NUTRIENT_SORT_MAP: Record<string, { id: number; unit: string; label: strin
   zinc:          { id: 1095, unit: 'mg',   label: 'Zinc'          },
 };
 
+// /food/{id} nests nutrients as {nutrient:{id,...}, amount}; /foods/search returns them flat. Extractors expect flat.
+export function flattenNutrients(food: any): USDAFood {
+  if (!Array.isArray(food?.foodNutrients)) return food;
+  food.foodNutrients = food.foodNutrients
+    .filter((n: any) => !n.nutrient || n.amount != null)
+    .map((n: any) => !n.nutrient ? n : {
+      nutrientId: n.nutrient.id,
+      nutrientName: n.nutrient.name,
+      nutrientNumber: n.nutrient.number,
+      unitName: n.nutrient.unitName,
+      value: n.amount,
+    });
+  return food;
+}
+
 export class USDAService {
   private readonly baseURL = 'https://api.nal.usda.gov/fdc/v1';
   private readonly apiKey: string;
@@ -132,8 +147,9 @@ export class USDAService {
         throw new ParsingError('Invalid response format from USDA API', response.data, requestId);
       }
 
-      this.cache.set(cacheKey, response.data, 10 * 60 * 1000);
-      return response.data;
+      const food = flattenNutrients(response.data);
+      this.cache.set(cacheKey, food, 10 * 60 * 1000);
+      return food;
     } catch (error: unknown) {
       return this.handleAxiosError(error, requestId, fdcId);
     }
